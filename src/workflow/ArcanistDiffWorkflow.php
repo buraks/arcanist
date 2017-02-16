@@ -2761,7 +2761,7 @@ EOTEXT
     $commit = $api->getHeadCommit();
     $prefix = idx($staging, 'prefix', 'phabricator');
 
-    $diff_tag = "refs/tags/{$prefix}/D{$revision_id}";
+    $diff_tag = "refs/heads/{$prefix}/D{$revision_id}";
 
     $this->writeOkay(
       pht('PUSH STAGING'),
