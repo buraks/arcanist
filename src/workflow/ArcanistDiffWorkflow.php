@@ -528,8 +528,6 @@ EOTEXT
         'unitResult' => $unit_result,
       ));
 
-    $this->submitChangesToStagingArea($this->diffID);
-
     $phid = idx($diff_info, 'phid');
     if ($phid) {
       $this->hitAutotargets = $this->updateAutotargets(
@@ -580,6 +578,8 @@ EOTEXT
         }
 
         echo pht('Updated an existing Differential revision:')."\n";
+
+        $this->submitChangesToStagingArea($commit_message->getRevisionID());
       } else {
         $revision = $this->dispatchWillCreateRevisionEvent($revision);
 
@@ -606,6 +606,8 @@ EOTEXT
         }
 
         echo pht('Created a new Differential revision:')."\n";
+
+        $this->submitChangesToStagingArea($result['revisionid']);
       }
 
       $uri = $result['uri'];
@@ -2678,8 +2680,8 @@ EOTEXT
     return $this->getArgument('browse');
   }
 
-  private function submitChangesToStagingArea($id) {
-    $result = $this->pushChangesToStagingArea($id);
+  private function submitChangesToStagingArea($revision_id) {
+    $result = $this->pushChangesToStagingArea($revision_id);
 
     // We'll either get a failure constant on error, or a list of pushed
     // refs on success.
@@ -2702,7 +2704,7 @@ EOTEXT
       phutil_json_encode($staging));
   }
 
-  private function pushChangesToStagingArea($id) {
+  private function pushChangesToStagingArea($revision_id) {
     if ($this->getArgument('skip-staging')) {
       $this->writeInfo(
         pht('SKIP STAGING'),
@@ -2759,14 +2761,13 @@ EOTEXT
     $commit = $api->getHeadCommit();
     $prefix = idx($staging, 'prefix', 'phabricator');
 
-    $base_tag = "refs/tags/{$prefix}/base/{$id}";
-    $diff_tag = "refs/tags/{$prefix}/diff/{$id}";
+    $diff_tag = "refs/tags/{$prefix}/D{$revision_id}";
 
     $this->writeOkay(
       pht('PUSH STAGING'),
       pht('Pushing changes to staging area...'));
 
-    $push_flags = array();
+    $push_flags = array('-f');
     if (version_compare($api->getGitVersion(), '1.8.2', '>=')) {
       $push_flags[] = '--no-verify';
     }
@@ -2777,26 +2778,6 @@ EOTEXT
       'uri' => $staging_uri,
     );
 
-    // If the base commit is a real commit, we're going to push it. We don't
-    // use this, but pushing it to a ref reduces the amount of redundant work
-    // that Git does on later pushes by helping it figure out that the remote
-    // already has most of the history. See T10509.
-
-    // In the future, we could avoid this push if the staging area is the same
-    // as the main repository, or if the staging area is a virtual repository.
-    // In these cases, the staging area should automatically have up-to-date
-    // refs.
-    $base_commit = $api->getSourceControlBaseRevision();
-    if ($base_commit !== ArcanistGitAPI::GIT_MAGIC_ROOT_COMMIT) {
-      $refs[] = array(
-        'ref' => $base_tag,
-        'type' => 'base',
-        'commit' => $base_commit,
-        'remote' => $remote,
-      );
-    }
-
-    // We're always going to push the change itself.
     $refs[] = array(
       'ref' => $diff_tag,
       'type' => 'diff',
